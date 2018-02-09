@@ -1,23 +1,21 @@
-get_parameters <- function(filename, start_date, end_date, person_type = "D%20-%20DEFENDANT"){
+append_parameters <- function(filename, start_date, end_date, person_type = "D%20-%20DEFENDANT"){
     
+    # browser()
     # Read in the CAF data file
     df <- read.csv(filename, stringsAsFactors = FALSE)
     
+    # Create a copy of Defendant.Name to modify
+    df$Defendant.Name2 <- df$Defendant.Name
+    
     # Remove suffixes and other junk from Defendant.Name 
-    df$Defendant.Name <- gsub(" Jr.","",df$Defendant.Name, fixed = TRUE)
-    df$Defendant.Name <- gsub(" Jr","",df$Defendant.Name, fixed = TRUE)
-    df$Defendant.Name <- gsub(" Sr.","",df$Defendant.Name, fixed = TRUE)
-    df$Defendant.Name <- gsub(" Sr","",df$Defendant.Name, fixed = TRUE)
-    df$Defendant.Name <- gsub(" II","",df$Defendant.Name, fixed = TRUE)
-    df$Defendant.Name <- gsub(" III","",df$Defendant.Name, fixed = TRUE)
-    df$Defendant.Name <- gsub(" 2nd","",df$Defendant.Name, fixed = TRUE)
-    df$Defendant.Name <- gsub(" 3rd","",df$Defendant.Name, fixed = TRUE)
-    df$Defendant.Name <- gsub(" & No Name","",df$Defendant.Name, fixed = TRUE)
-    df$Defendant.Name <- gsub("\' ","",df$Defendant.Name, fixed = TRUE)
-    df$Defendant.Name <- gsub("\'","",df$Defendant.Name, fixed = TRUE)
+    pat <- c(" Jr."," Jr"," Sr."," Sr"," III"," II"," 3rd"," 2nd"," & No Name","\' ","\'")
+    for(i in pat) df$Defendant.Name2 <- gsub(i,"", df$Defendant.Name2, fixed = TRUE)
+    # Remove spanish stopwords
+    pat <- c(" De "," La ")
+    for(i in pat) df$Defendant.Name2 <- gsub(i," ", df$Defendant.Name2, fixed = TRUE)
     
     # Count the number of words in Defendant.Name
-    df$numWords <- vapply(strsplit(df$Defendant.Name, "\\W+"), length, integer(1))
+    df$numWords <- vapply(strsplit(df$Defendant.Name2, "\\W+"), length, integer(1))
     
     # distribution of word count
     # table(df$numWords)
@@ -27,7 +25,7 @@ get_parameters <- function(filename, start_date, end_date, person_type = "D%20-%
     # If word count > 0, assume the last word is last_name
     df$last_name <- vapply(X=1:nrow(df), FUN=function(i){
         ifelse(df$numWords[i]>0,
-            unlist(strsplit(df$Defendant.Name[i], "\\W+"))[df$numWords[i]],
+            unlist(strsplit(df$Defendant.Name2[i], "\\W+"))[df$numWords[i]],
             NA_character_
         )
     }, FUN.VALUE=character(1))
@@ -35,19 +33,19 @@ get_parameters <- function(filename, start_date, end_date, person_type = "D%20-%
     # Attempt to extract first name based how many words are in Defendant.Name
     df$first_name <- vapply(X=1:nrow(df), FUN=function(i){
         # If defendent_name has 2 words, assume first word is first_name
-        ifelse(df$numWords[i]==2,unlist(strsplit(df$Defendant.Name[i], "\\W+"))[1],
+        ifelse(df$numWords[i]==2,unlist(strsplit(df$Defendant.Name2[i], "\\W+"))[1],
             # If defendent_name has 3 words, assume first word is first_name
-            ifelse(df$numWords[i]==3, unlist(strsplit(df$Defendant.Name[i], "\\W+"))[1],
+            ifelse(df$numWords[i]==3, unlist(strsplit(df$Defendant.Name2[i], "\\W+"))[1],
                 # If defendent_name has 3 words and "/" or "&", assume the first is first_name
-                ifelse(df$numWords[i]==3 & any(unlist(strsplit(df$Defendant.Name[i]," ")) %in% c("/","&")),unlist(strsplit(df$Defendant.Name[i], "\\W+"))[1],
+                ifelse(df$numWords[i]==3 & any(unlist(strsplit(df$Defendant.Name2[i]," ")) %in% c("/","&")),unlist(strsplit(df$Defendant.Name2[i], "\\W+"))[1],
                     # If defendent_name has 4 words, one of them "or", assume the third is first_name 
-                    ifelse(df$numWords[i]==4 & any(unlist(strsplit(df$Defendant.Name[i]," ")) =="or"),unlist(strsplit(df$Defendant.Name[i], "\\W+"))[1],
+                    ifelse(df$numWords[i]==4 & any(unlist(strsplit(df$Defendant.Name2[i]," ")) =="or"),unlist(strsplit(df$Defendant.Name2[i], "\\W+"))[1],
                         # If defendent_name has 4 words and "/" or "&", assume the third is first_name 
-                        ifelse(df$numWords[i]==4 & any(unlist(strsplit(df$Defendant.Name[i]," ")) %in% c("/","&")),unlist(strsplit(df$Defendant.Name[i], "\\W+"))[3],
+                        ifelse(df$numWords[i]==4 & any(unlist(strsplit(df$Defendant.Name2[i]," ")) %in% c("/","&")),unlist(strsplit(df$Defendant.Name2[i], "\\W+"))[3],
                             # If defendent_name has 5 words and "&" or "/" assume the fourth is first_name
                             # ifelse(df$numWords[i]==5 & any(unlist(strsplit(df$Defendant.Name[i]," ")) %in% c("/","&")),unlist(strsplit(df$Defendant.Name[i], "\\W+"))[4],
                                 # If defendent_name has 5 words one of them "or", assume the fourth is first_name
-                                ifelse(df$numWords[i]==5 & any(unlist(strsplit(df$Defendant.Name[i]," ")) == "or"),unlist(strsplit(df$Defendant.Name[i], "\\W+"))[4],
+                                ifelse(df$numWords[i]==5 & any(unlist(strsplit(df$Defendant.Name2[i]," ")) == "or"),unlist(strsplit(df$Defendant.Name2[i], "\\W+"))[4],
                                     # Otherwise leave first_name empty
                                     NA_character_)
                                 )
@@ -59,7 +57,7 @@ get_parameters <- function(filename, start_date, end_date, person_type = "D%20-%
         }, FUN.VALUE=character(1))
     
     # replace NAs with ""
-    df$first_name[which(is.na(df$first_name))] <- ""
+    df$first_name <- ifelse(is.na(df$first_name),"", df$first_name)
     
     # Get parameter value for county
     county_lookup <- read.csv("county_lookup.csv", stringsAsFactors = FALSE)
@@ -77,7 +75,7 @@ get_parameters <- function(filename, start_date, end_date, person_type = "D%20-%
     
     # Exclude cases where Defendant.Name is empty
     # nrow(df) # [1] 1672
-    df <- df[!df$Defendant.Name=="",]
+    df <- df[df$Tracking.Number != "",]
     # nrow(df) # [1] 1650
     
     # Create column for start_date
@@ -94,6 +92,7 @@ get_parameters <- function(filename, start_date, end_date, person_type = "D%20-%
         
         queryURL <- paste0("last_name=", df$last_name,
                            "&first_name=", df$first_name,
+                           "&partial_ind=",ifelse(nchar(df$first_name)==1,'checked',''),
                            "&begin_date=", df$start_date, 
                            "&end_date=", df$end_date,
                            "&person_type=", df$person_type, 
@@ -110,12 +109,25 @@ get_parameters <- function(filename, start_date, end_date, person_type = "D%20-%
     # Create column for query url
     df$url <- get_query(df)
     
-    return(df[,c("Defendant.Name","first_name","last_name","person_type","county_code","start_date","end_date", "url")])
+    # Select columns for result
+    df <- df[,c("Tracking.Number","Receive.Date","Agency","Defendant.Name","Address","City.State.Zip",
+                "STATE","Currency.Seized","Personal.Property.Seized","Real.Property.Seized","FilingStatus",
+                "County","Judicial.District","Disposition..Money.","Disposition..Property.",
+                "first_name","last_name","person_type","county_code","start_date","end_date","url")]
+    
+    # Remove dots from column names
+    names(df) <- gsub("\\.+","", names(df))
+    
+    # Prefix columns to denote query inputs and query results
+    names(df)[1:15] <- paste0("caf_",names(df)[1:15])
+    names(df)[16:22] <- paste0("query_",names(df)[16:22])
+    
+    return(df)
     
     }
 
 ## get search parameters from 2010 Asset Tracker file
-df <- get_parameters("2010 Asset Seizures.csv", start_date = "01/01/2010", end_date = "12/31/2011")
+df <- append_parameters("2010 Asset Seizures.csv", start_date = "01/01/2010", end_date = "12/31/2011")
 ## get search parameters from 2011 Asset Tracker file
 # df <- get_parameters("2011 Asset Seizures.csv", start_date = "01/01/2011", end_date = "12/31/2012")
 ## get search parameters from 2012 Asset Tracker file
@@ -130,10 +142,9 @@ df <- get_parameters("2010 Asset Seizures.csv", start_date = "01/01/2010", end_d
 # df <- get_parameters("2016 Asset Seizures.csv", start_date = "01/01/2016", end_date = "12/31/2017")
 
 PersonNameOrBusinessNameSearch <- function(url){
-    
-    # Get data for specified time period and case type
-    library(rvest)
 
+    library(rvest)
+    
     # Query the url
     doc <- read_html(url, options = "HUGE")
 
@@ -177,7 +188,7 @@ PersonNameOrBusinessNameSearch <- function(url){
 
 
 ## test scraper function on a single url
-# result <- PersonNameOrBusinessNameSearch(df$url[10])
+# result <- PersonNameOrBusinessNameSearch(df$query_url[10])
 # str(result)
 
 
@@ -190,13 +201,17 @@ PersonNameOrBusinessNameSearch <- function(url){
 #####
 # Code to put in function
 
-# Search criminal filings in CourtConnect for each Person.Name 
-# associated with a civil asset forfiture case
+# Search criminal filings in CourtConnect for each caf_PersonName
 l <- lapply(X=1:nrow(df), FUN=function(i){
     
-    cat(paste0(i,": ", df$first_name[i]," ",df$last_name[i], "\n"))
+    # print progress
+    cat(paste0(i,": ", df$query_first_name[i]," ",df$query_last_name[i], "... "))
 
-    result <- PersonNameOrBusinessNameSearch(df$url[i])
+    result <- PersonNameOrBusinessNameSearch(df$query_url[i])
+    
+    # print number of rows in progress
+    nRows <- ifelse(result$id != "",nrow(result), 0)
+    cat(paste0(nRows," rows","\n"))
 
     return(result)
     })
@@ -224,11 +239,10 @@ result$filing_date <- ifelse(result$id=="", NA_character_, result$filing_date)
 result$judge <- ifelse(result$id=="", NA_character_, result$judge)
 result$docket_report_url <- ifelse(result$id=="", NA_character_, result$docket_report_url)
 
-# Prefix columns to denote query inputs and query results
-names(result)[3:9] <- paste0("query_",names(result)[3:9])
-names(result)[10:18] <- paste0("result_",names(result)[10:18])
+# Prefix columns to denote query results
+names(result)[23:31] <- paste0("result_",names(result)[23:31])
 
 #####
 
 ## output results to csv file
-# write.csv(result, "2010_criminal_search(3).csv", row.names = FALSE)
+write.csv(result, "2010_criminal_search(4).csv", row.names = FALSE)
