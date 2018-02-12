@@ -1,0 +1,213 @@
+get_dktrpt <- function(url) {
+    
+    # browser()
+    # url <- search_2010$docket_report_url[1]
+    # url <- "https://caseinfo.aoc.arkansas.gov/cconnect/PROD/public/ck_public_qry_doct.cp_dktrpt_docket_report?case_id=02CR-10-31"
+    # url <- search_2010$docket_report_url[55]
+    # url <- search_2010$docket_report_url[3]
+    # url <- search_2010$docket_report_url[27]
+    # url <- search_2010$docket_report_url[35]
+    
+    library(rvest)
+    
+    a_nodes <- read_html(url) %>% html_nodes("a")
+    
+    test <- unlist(lapply(1:length(a_nodes), FUN=function(i){
+        a_nodes[[i]] %>% html_text()
+        }))
+    
+    ind <- which(grepl("Violations", test))
+    
+    # a_nodes[[1]] %>% html_text()
+    # a_nodes[[2]] %>% html_text()
+    # a_nodes[[3]] %>% html_text()
+    # a_nodes[[4]] %>% html_text()
+    # a_nodes[[5]] %>% html_text() # Judge ID
+    # a_nodes[[6]] %>% html_text() # Plaintiff ID
+    # a_nodes[[7]] %>% html_text() # Defendnt ID
+    # a_nodes[[8]] %>% html_text() # Violations
+    # a_nodes[[9]] %>% html_text() # Sentences
+    # a_nodes[[10]] %>% html_text()
+    # a_nodes[[11]] %>% html_text()
+    
+    
+    # Violations section
+    # (violations <- a_nodes[[ind]] %>% html_text() %>% strsplit("\n") %>% .[[1]] %>% gsub("&nbsp", " ", .) %>% gsub(" +", " ", .) %>% trimws())
+    # (AgeAtViolation <- violations[which(grepl("Age at Violation: ", violations))] %>% gsub("Age at Violation: ","",.,fixed=TRUE))
+    # (PleaDate <- violations[which(grepl("Plea: ", violations))] %>% gsub("Plea: ","",.,fixed=TRUE) %>% gsub("NOT GUILTY","NOT_GUILTY",.) %>% gsub("NEGOTIATED GUILTY","NEGOTIATED_GUILTY",.) %>% strsplit(split=" ", .) %>% unlist() %>% .[c(TRUE, FALSE)])
+    # (Plea <- violations[which(grepl("Plea: ", violations))] %>% gsub("Plea: ","",.,fixed=TRUE) %>% gsub("NOT GUILTY","NOT_GUILTY",.) %>% gsub("NEGOTIATED GUILTY","NEGOTIATED_GUILTY",.) %>% strsplit(split=" ", .) %>% unlist() %>% .[c(FALSE, TRUE)])
+    # (ViolationNumber <- violations[which(grepl("Plea: ", violations)) + rep(1,3)])
+    # (ViolationDescription <- violations[which(grepl("Plea: ", violations)) + rep(2,3)])
+    # (Level <- violations[which(grepl("Level: ", violations))] %>% gsub("Level: ","",.,fixed=TRUE))
+    # (ViolationDate <- violations[which(grepl("Violation Date: ", violations))] %>% gsub("Violation Date: ","",.,fixed=TRUE))
+    # (ViolationTime <- violations[which(grepl("Violation Time: ", violations))] %>% gsub("Violation Time: ","",.,fixed=TRUE))
+    
+    
+    violations <- a_nodes[[ind]] %>% html_text() %>% strsplit("\n") %>% .[[1]] %>% gsub("&nbsp", " ", .) %>% gsub(" +", " ", .) %>% trimws()
+    AgeAtViolation <- violations[which(grepl("Age at Violation: ", violations))] %>% gsub("Age at Violation: ","",.,fixed=TRUE) %>% as.integer()
+    PleaDate <- violations[which(grepl("Plea: ", violations))] %>% gsub("Plea: ","",.,fixed=TRUE) %>% gsub("NOT GUILTY","NOT_GUILTY",.) %>% gsub("NEGOTIATED GUILTY","NEGOTIATED_GUILTY",.) %>% strsplit(split=" ", .) %>% unlist() %>% .[c(TRUE, FALSE)] %>% as.character()
+    Plea <- violations[which(grepl("Plea: ", violations))] %>% gsub("Plea: ","",.,fixed=TRUE) %>% gsub("NOT GUILTY","NOT_GUILTY",.) %>% gsub("NEGOTIATED GUILTY","NEGOTIATED_GUILTY",.) %>% strsplit(split=" ", .) %>% unlist() %>% .[c(FALSE, TRUE)] %>% as.character()
+    ViolationNumber <- violations[which(grepl("Plea: ", violations)) + rep(1,length(Plea))] %>% as.character()
+    ViolationDescription <- violations[which(grepl("Plea: ", violations)) + rep(2,length(Plea))] %>% as.character()
+    Level <- violations[which(grepl("Level: ", violations))] %>% gsub("Level: ","",.,fixed=TRUE) %>% as.character()
+    ViolationDate <- violations[which(grepl("Violation Date: ", violations))] %>% gsub("Violation Date: ","",.,fixed=TRUE) %>% as.character()
+    ViolationTime <- violations[which(grepl("Violation Time: ", violations))] %>% gsub("Violation Time: ","",.,fixed=TRUE) %>% as.character()
+    
+    maxlen <- max(vapply(list(AgeAtViolation,PleaDate,Plea,ViolationNumber,ViolationDescription,Level,ViolationDate,ViolationTime), length, FUN.VALUE = integer(1)))
+    
+    violations <- data.frame(AgeAtViolation=NA_integer_,
+                             PleaDate=NA_character_,
+                             Plea=NA_character_,
+                             ViolationNumber=NA_character_,
+                             ViolationDescription=NA_character_, 
+                             Level=NA_character_,
+                             ViolationDate=NA_character_,
+                             ViolationTime=NA_character_, 
+                             stringsAsFactors=FALSE)
+    
+    if(maxlen>0) {
+        violations <- data.frame(AgeAtViolation=ifelse(rep(identical(AgeAtViolation, character(0)), maxlen), NA_integer_, AgeAtViolation),
+                             PleaDate=ifelse(rep(identical(PleaDate,character(0)),maxlen), NA_character_, PleaDate),
+                             Plea=ifelse(rep(identical(Plea, character(0)),maxlen), NA_character_, Plea),
+                             ViolationNumber=ifelse(rep(identical(ViolationNumber, character(0)),maxlen), NA_character_, ViolationNumber),
+                             ViolationDescription=ifelse(rep(identical(ViolationDescription, character(0)),maxlen), NA_character_, ViolationDescription),
+                             Level=ifelse(rep(identical(Level, character(0)),maxlen), NA_character_, Level),
+                             ViolationDate=ifelse(rep(identical(ViolationDate, character(0)),maxlen), NA_character_, ViolationDate),
+                             ViolationTime=ifelse(rep(identical(ViolationTime,character(0)),maxlen), NA_character_, ViolationTime),
+                             stringsAsFactors=FALSE)
+        }
+    
+    
+    # dim(violations) # [1] 3 8
+    
+    AgeAtViolation <- data.frame(t(as.matrix(violations[,1])), stringsAsFactors = FALSE)
+    names(AgeAtViolation) <- paste0("AgeAtViolation_",1:ncol(AgeAtViolation))
+    PleaDate <- data.frame(t(as.matrix(violations[,2])))
+    names(PleaDate) <- paste0("PleaDate_",1:ncol(PleaDate))
+    Plea <- data.frame(t(as.matrix(violations[,3])))
+    names(Plea) <- paste0("Plea_",1:ncol(Plea))
+    ViolationNumber <- data.frame(t(as.matrix(violations[,4])))
+    names(ViolationNumber) <- paste0("ViolationNumber_",1:ncol(ViolationNumber))
+    ViolationDescription <- data.frame(t(as.matrix(violations[,5])))
+    names(ViolationDescription) <- paste0("ViolationDescription_",1:ncol(ViolationDescription))
+    Level <- data.frame(t(as.matrix(violations[,6])))
+    names(Level) <- paste0("Level_",1:ncol(Level))
+    ViolationDate <- data.frame(t(as.matrix(violations[,7])))
+    names(ViolationDate) <- paste0("ViolationDate_",1:ncol(ViolationDate))
+    ViolationTime <- data.frame(t(as.matrix(violations[,8])))
+    names(ViolationTime) <- paste0("ViolationTime_",1:ncol(ViolationTime))
+    
+    violations_w <- cbind(AgeAtViolation,
+                          PleaDate,
+                          Plea,
+                          ViolationNumber,
+                          ViolationDescription,
+                          Level,
+                          ViolationDate,
+                          ViolationTime,
+                          stringsAsFactors=FALSE)
+    
+    # dim(violations_w) # [1]  1 24
+    
+    return(violations_w)
+    
+    # dktrpt <- cbind(Judge_ID = a_nodes[[5]] %>% html_text(), # Judge ID
+    #                 Plaintiff_ID = a_nodes[[6]] %>% html_text(), # Plaintiff ID
+    #                 Defendnt_ID = a_nodes[[7]] %>% html_text(), # Defendnt ID
+    #                 violations_w,
+    #                 stringsAsFactors=FALSE)
+    # 
+    # # dim(dktrpt) # [1]  1 27
+    # 
+    # return(dktrpt)
+    
+}
+
+
+## Get docket report for each case
+search_2010 <- read.csv("2010_criminal_search(4).csv", stringsAsFactors = FALSE)
+search_2010$docket_report_url <- gsub("backto=P&", "", search_2010$docket_report_url, fixed = TRUE)
+
+## "https://caseinfo.aoc.arkansas.gov/cconnect/PROD/public/ck_public_qry_doct.cp_dktrpt_frames?backto=P&case_id=16JCR-10-1260"
+## "https://caseinfo.aoc.arkansas.gov/cconnect/PROD/public/ck_public_qry_doct.cp_dktrpt_docket_report?case_id=16JCR-10-1260"
+
+# l <- lapply(X=1:nrow(search_2010), FUN=function(i){
+#     
+#     cat(paste0(i, "\n"))
+#     dktrpt <- search_2010$docket_report_url[i]
+#     if(!is.na(dktrpt)) dktrpt <- get_dktrpt(dktrpt)
+#     
+#     return(dktrpt)
+#     
+#     })
+# 
+# saveRDS(l, "dktrpt_2010.RDS")
+l <- readRDS("dktrpt_2010.RDS")
+
+numViolations <- unlist(lapply(1:length(l), function(i){
+    dim(l[[i]])[2]/8
+    }))
+
+# Look at the distribution of violations count
+hist(numViolations)
+range(numViolations)
+
+# Get the largest set of column names
+colNames <- c(paste0("AgeAtViolation_", 1:max(numViolations)), 
+  paste0("Level_", 1:max(numViolations)),
+  paste0("Plea_", 1:max(numViolations)), 
+  paste0("PleaDate_", 1:max(numViolations)),
+  paste0("ViolationDate_", 1:max(numViolations)), 
+  paste0("ViolationDescription_", 1:max(numViolations)),
+  paste0("ViolationNumber_", 1:max(numViolations)),
+  paste0("ViolationTime_", 1:max(numViolations)))
+
+# Replace empty elements with empty dataframe
+table(unlist(lapply(l, is.character)))
+# FALSE  TRUE 
+# 1191   459 
+ind <- which(unlist(lapply(l, is.character)))
+length(ind) # [1] 459
+
+l <- lapply(1:length(l), function(i){
+    
+    if(i %in% ind){
+        l[[i]] <- matrix(nrow = 1, ncol = 8*max(numViolations))
+        l[[i]] <- as.data.frame(l[[i]], stringsAsFactors = FALSE)
+        names(l[[i]]) <- colNames
+    }
+    
+    return(l[[i]])
+    
+    })
+
+
+
+
+# Combine docket reports into single dataframe
+library(data.table)
+df <- rbindlist(l, fill=TRUE)
+
+# Convert from data.table back to dataframe
+df <- as.data.frame(df, stringsAsFactors=FALSE)
+
+# Put columns in order
+df <- df[, colNames]
+
+
+# Convert factor columns to character
+indFactors <- which(!grepl("AgeAtViolation_", names(df)))
+df[,indFactors] <- lapply(df[,indFactors], as.character)
+
+# unlist(lapply(df, class))
+
+# Join docket report data to the search results
+search_results <- read.csv("2010_criminal_search(4).csv", stringsAsFactors = FALSE)
+dim(search_results) # [1] 1650   32
+docket_reports <- df 
+dim(df) # [1] 1650  208
+
+result <- cbind(search_results, docket_reports, stringsAsFactors=FALSE)
+
+# write.csv(result, "2010_criminal_search_with_dktrpt.csv", row.names = FALSE)
+
