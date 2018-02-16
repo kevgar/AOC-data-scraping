@@ -1,6 +1,5 @@
 append_parameters <- function(filename, start_date, end_date, person_type = "D%20-%20DEFENDANT"){
     
-    # browser()
     # Read in the CAF data file
     df <- read.csv(filename, stringsAsFactors = FALSE)
     
@@ -42,14 +41,11 @@ append_parameters <- function(filename, start_date, end_date, person_type = "D%2
                     ifelse(df$numWords[i]==4 & any(unlist(strsplit(df$Defendant.Name2[i]," ")) =="or"),unlist(strsplit(df$Defendant.Name2[i], "\\W+"))[1],
                         # If defendent_name has 4 words and "/" or "&", assume the third is first_name 
                         ifelse(df$numWords[i]==4 & any(unlist(strsplit(df$Defendant.Name2[i]," ")) %in% c("/","&")),unlist(strsplit(df$Defendant.Name2[i], "\\W+"))[3],
-                            # If defendent_name has 5 words and "&" or "/" assume the fourth is first_name
-                            # ifelse(df$numWords[i]==5 & any(unlist(strsplit(df$Defendant.Name[i]," ")) %in% c("/","&")),unlist(strsplit(df$Defendant.Name[i], "\\W+"))[4],
                                 # If defendent_name has 5 words one of them "or", assume the fourth is first_name
                                 ifelse(df$numWords[i]==5 & any(unlist(strsplit(df$Defendant.Name2[i]," ")) == "or"),unlist(strsplit(df$Defendant.Name2[i], "\\W+"))[4],
                                     # Otherwise leave first_name empty
                                     NA_character_)
                                 )
-                            # )
                         )
                     )
                 )
@@ -142,7 +138,17 @@ df <- append_parameters("2010 Asset Seizures.csv", start_date = "01/01/2010", en
 # df <- get_parameters("2016 Asset Seizures.csv", start_date = "01/01/2016", end_date = "12/31/2017")
 
 PersonNameOrBusinessNameSearch <- function(url){
+    
 
+    # URLs to test
+    # url <- df$query_url[1] # 0 results
+    # url <- df$query_url[5] # 1 results
+    # url <- df$query_url[2] # 2 results
+    # url <- df$query_url[3] # 3 results
+    # url <- df$query_url[343] # 4 results
+    # url <- df$query_url[203] # 10 results
+    
+    
     library(rvest)
     
     # Query the url
@@ -156,93 +162,103 @@ PersonNameOrBusinessNameSearch <- function(url){
     # [4] "Party Type"
     # [5] "Filing Date"
     # [6] "Judge"
-
-    # Get data from "Cases Filed by Date Search" results
-    id                 <- html_nodes(doc, "td:nth-child(1)") %>% html_text() %>% .[2]
-    names_corporation  <- html_nodes(doc, "td:nth-child(2)") %>% html_text() %>% .[2]
-    names_corporation  <- regmatches(names_corporation,regexpr("(^[^:]+)", names_corporation))
-    names_corporation  <- gsub("Aliases","",names_corporation, fixed = TRUE)
-    case_description   <- html_nodes(doc, "td:nth-child(3)") %>% html_text() %>% .[2]
-    case_status        <- strsplit(case_description, split = ":")[[1]][3]
-    case_id            <- html_nodes(doc, "a") %>% html_text() %>% .[2]
-    party_type         <- html_nodes(doc, "td:nth-child(4)") %>% html_text() %>% .[2]
-    filing_date        <- html_nodes(doc, "td:nth-child(5)") %>% html_text() %>% .[2]
-    filing_date        <- as.Date(filing_date, format="%d-%B-%y")
-    judge              <- html_nodes(doc, "td:nth-child(6)") %>% html_text() %>% .[2]
-    judge              <- trimws(gsub("[[:punct:]]","",judge), "both")
-    docket_report_url  <- paste0("https://caseinfo.aoc.arkansas.gov/cconnect/PROD/public/ck_public_qry_doct.cp_dktrpt_docket_report?backto=P&case_id=",case_id)
-
-    # Create dataframe
-    df <- data.frame(id=id,
-                     names_corporation=names_corporation,
-                     case_description=case_description,
-                     case_status=case_status,
-                     case_id=case_id,
-                     party_type=party_type,
-                     filing_date=filing_date,
-                     judge=judge,
-                     docket_report_url=docket_report_url,
+    
+    # Count the number of columns
+    numColumns <- length(html_nodes(doc, "th") %>% html_text()) 
+    # numColumns # [1] 6
+    
+    df <- data.frame(id=NA_character_,
+                     names_corporation=NA_character_,
+                     case_description=NA_character_,
+                     case_status=NA_character_,
+                     case_id=NA_character_,
+                     party_type=NA_character_,
+                     filing_date=NA_character_,
+                     judge=NA_character_,
+                     docket_report_url=NA_character_,
                      stringsAsFactors = F)
-    return(df)
-}
 
+    ## Get data from "Cases Filed by Date Search" results
+    
+    case_desc_l <- html_nodes(doc, "td:nth-child(3)") %>% 
+        html_text() %>% .[-c(1, length(.)-1, length(.))] %>% 
+        strsplit(x=., split = ":")
+    
+    # Create function for slitting case description into three data elements
+    cdsplit <- function(ind, myList=case_desc_l) 
+        unlist(lapply(1:length(myList), function(i){ gsub("Status.*","",trimws(gsub("\\s+", " ", myList[[i]][ind]))) }))
+        
+    # Create dataframe
+    
+    if(numColumns==6) df <- data.frame(
+        id                = html_nodes(doc, "td:nth-child(1)") %>% html_text() %>% .[-c(1, length(.)-1, length(.))],
+        names_corporation = html_nodes(doc, "td:nth-child(2)") %>% html_text() %>% .[-c(1, length(.)-1, length(.))] %>% gsub("Aliases","",., fixed = TRUE),
+        case_description  = cdsplit(2),
+        case_status       = cdsplit(3),
+        case_id           = gsub("\\s.*","", cdsplit(2)),
+        party_type        = html_nodes(doc, "td:nth-child(4)") %>% html_text() %>% .[-c(1, length(.))],
+        filing_date       = html_nodes(doc, "td:nth-child(5)") %>% html_text() %>% .[-c(1, length(.))] %>% as.Date(., format="%d-%B-%y"),
+        judge             = html_nodes(doc, "td:nth-child(6)") %>% html_text() %>% .[-c(1, length(.))] %>% gsub(", ","",.),
+        docket_report_url = paste0("https://caseinfo.aoc.arkansas.gov/cconnect/PROD/public/ck_public_qry_doct.cp_dktrpt_docket_report?case_id=",gsub("\\s.*","",cdsplit(2))),
+        stringsAsFactors  = F)
+    
+    return(df)
+    
+} # end PersonNameOrBusinessNameSearch function
 
 ## test scraper function on a single url
 # result <- PersonNameOrBusinessNameSearch(df$query_url[10])
+# result <- PersonNameOrBusinessNameSearch(df$query_url[15])
 # str(result)
 
 
-###
-# TO DO:
-# create a wrapper function that takes the dataframe of parameters as input 
+## wrapper function that takes the dataframe of parameters as input 
 # and returns dataframe augmented with criminal search result as output
-###
 
-#####
-# Code to put in function
-
-# Search criminal filings in CourtConnect for each caf_PersonName
-l <- lapply(X=1:nrow(df), FUN=function(i){
+wrapper_func <- function(df){
     
-    # print progress
-    cat(paste0(i,": ", df$query_first_name[i]," ",df$query_last_name[i], "... "))
-
-    result <- PersonNameOrBusinessNameSearch(df$query_url[i])
+    # Search criminal filings in CourtConnect for each caf_PersonName
+    l <- lapply(X=1:nrow(df), FUN=function(i){
+        
+        # print progress
+        cat(paste0(i,": ", df$query_first_name[i]," ",df$query_last_name[i], "... "))
+        
+        # search for filings
+        result <- PersonNameOrBusinessNameSearch(df$query_url[i])
+        
+        # add result row count to progress
+        nRows <- ifelse(all(is.na(result)), 0, nrow(result))
+        cat(paste0(nRows," rows","\n"))
+        
+        return(result)
+        
+    }) # end lapply
     
-    # print number of rows in progress
-    nRows <- ifelse(result$id != "",nrow(result), 0)
-    cat(paste0(nRows," rows","\n"))
-
+    # Combine list of dataframe using recursive rbind
+    result <- do.call("rbind", l)
+    
+    ## Create unique identifier for join
+    result$key_col <- 1:nrow(result)
+    # names(result)
+    df$key_col <- 1:nrow(df)
+    # names(df)
+    
+    # nrow(result) # [1] 1650
+    # nrow(df) # [1] 1650
+    
+    # Merge results to original data and search parameters
+    result <- merge(df, result, by="key_col")
+    
+    # Prefix columns to denote query results
+    names(result)[25:32] <- paste0("result_",names(result)[25:32])
+    
     return(result)
-    })
+    
+    }
 
-result <- do.call("rbind", l)
-
-## Create unique identifier for join
-result$key_col <- 1:nrow(result)
-names(result)
-df$key_col <- 1:nrow(df)
-names(df)
-
-nrow(result) # [1] 1650
-nrow(df) # [1] 1650
-
-result <- merge(df, result, by="key_col")
-
-## Set column values to NA for empty results
-result$id <- ifelse(result$id=="", NA_character_, result$id)
-result$names_corporation <- ifelse(result$id=="", NA_character_, result$names_corporation)
-result$case_description <- ifelse(result$id=="", NA_character_, result$case_description)
-result$case_id <- ifelse(result$id=="", NA_character_, result$case_id)
-result$party_type <- ifelse(result$id=="", NA_character_, result$party_type)
-result$filing_date <- ifelse(result$id=="", NA_character_, result$filing_date)
-result$judge <- ifelse(result$id=="", NA_character_, result$judge)
-result$docket_report_url <- ifelse(result$id=="", NA_character_, result$docket_report_url)
-
-# Prefix columns to denote query results
-names(result)[23:31] <- paste0("result_",names(result)[23:31])
-
-#####
+# Call the wrapper function to generate result dataset
+result <- wrapper_func(df)
 
 ## output results to csv file
-write.csv(result, "2010_criminal_search(4).csv", row.names = FALSE)
+# write.csv(result, "2010_criminal_search(5).csv", row.names = FALSE)
+
