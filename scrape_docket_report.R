@@ -210,6 +210,7 @@ wrapper_fun_2 <- function(search_results_file, nrows=nrow(read.csv(search_result
     docket_reports <- df
     # dim(df) # [1] 1650  208
     
+<<<<<<< HEAD
     # Return search results and docket reports in seperate dataframes
     # return(list(search_results=search_results, docket_reports=docket_reports))
     
@@ -217,10 +218,19 @@ wrapper_fun_2 <- function(search_results_file, nrows=nrow(read.csv(search_result
     result <- cbind(search_results, docket_reports, stringsAsFactors=FALSE)
     
     return(result)
+=======
+    # result <- cbind(search_results, docket_reports, stringsAsFactors=FALSE)
+    
+    # return(result)
+    return(list(search_results=search_results, docket_reports=docket_reports))
+>>>>>>> faf87d2542a25e394132001b7b044508df052dba
     
     }
 
+# Write results to a file
+test <- wrapper_fun_2("2010_criminal_search(5).csv")
 
+<<<<<<< HEAD
 # Scrape docket report from each search result
 result <- wrapper_fun_2("2010_criminal_search(5).csv")
 
@@ -229,3 +239,12 @@ result <- wrapper_fun_2("2010_criminal_search(5).csv")
 
 # Write results to a file
 # write.csv(result, "2010_criminal_search.csv", row.names = FALSE)
+=======
+# saveRDS(test, "search_results_docket_reports.RDS")
+
+# write.csv(result, "2010_criminal_search_with_dktrpt.csv", row.names = FALSE)
+
+# str(test$search_results)
+# str(test$docket_reports)
+
+>>>>>>> faf87d2542a25e394132001b7b044508df052dba
