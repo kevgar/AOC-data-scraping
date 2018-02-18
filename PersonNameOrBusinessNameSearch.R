@@ -149,11 +149,26 @@ PersonNameOrBusinessNameSearch <- function(url){
     # url <- df$query_url[203] # 10 results
     
     
-    library(rvest)
+    library(rvest, quietly = TRUE)
     
-    # Query the url
-    doc <- read_html(url, options = "HUGE")
-
+    # function for trying to read from a url
+    function_that_may_fail <- function(i, ...) {
+        # Query the url
+        doc <- read_html(url, options = "HUGE")
+        # stop if read_html() failed
+        stopifnot(is.list(doc), length(doc)==2, class(doc) %in% c("xml_document","xml_node"))
+        # return contents read from the url
+        return(doc)
+    }
+    
+    # attempt to read from the url, and retry up to 10 times if needed
+    for(i in 1:10){
+        try({doc <- function_that_may_fail(i, url)
+        break #break/exit the for-loop
+        }, silent = FALSE)
+        Sys.sleep(2)
+    }
+    
     # Get the column names
     # html_nodes(doc, "th") %>% html_text()
     # [1] "ID"
@@ -173,7 +188,7 @@ PersonNameOrBusinessNameSearch <- function(url){
                      case_status=NA_character_,
                      case_id=NA_character_,
                      party_type=NA_character_,
-                     filing_date=NA_character_,
+                     filing_date=as.Date(NA_character_),
                      judge=NA_character_,
                      docket_report_url=NA_character_,
                      stringsAsFactors = F)
@@ -197,7 +212,7 @@ PersonNameOrBusinessNameSearch <- function(url){
         case_status       = cdsplit(3),
         case_id           = gsub("\\s.*","", cdsplit(2)),
         party_type        = html_nodes(doc, "td:nth-child(4)") %>% html_text() %>% .[-c(1, length(.))],
-        filing_date       = html_nodes(doc, "td:nth-child(5)") %>% html_text() %>% .[-c(1, length(.))] %>% as.Date(., format="%d-%B-%y"),
+        filing_date       = html_nodes(doc, "td:nth-child(5)") %>% html_text() %>% .[-c(1, length(.))] %>% as.Date(., format="%d-%B-%y") %>% suppressMessages(),
         judge             = html_nodes(doc, "td:nth-child(6)") %>% html_text() %>% .[-c(1, length(.))] %>% gsub(", ","",.),
         docket_report_url = paste0("https://caseinfo.aoc.arkansas.gov/cconnect/PROD/public/ck_public_qry_doct.cp_dktrpt_docket_report?case_id=",gsub("\\s.*","",cdsplit(2))),
         stringsAsFactors  = F)
@@ -226,8 +241,11 @@ wrapper_func <- function(df){
         # search for filings
         result <- PersonNameOrBusinessNameSearch(df$query_url[i])
         
+        # Create unique identifier for join
+        result$key_col <- i
+        
         # add result row count to progress
-        nRows <- ifelse(all(is.na(result)), 0, nrow(result))
+        nRows <- ifelse(all(is.na(result[,-ncol(result)])), 0, nrow(result))
         cat(paste0(nRows," rows","\n"))
         
         return(result)
@@ -238,8 +256,6 @@ wrapper_func <- function(df){
     result <- do.call("rbind", l)
     
     ## Create unique identifier for join
-    result$key_col <- 1:nrow(result)
-    # names(result)
     df$key_col <- 1:nrow(df)
     # names(df)
     
@@ -250,14 +266,14 @@ wrapper_func <- function(df){
     result <- merge(df, result, by="key_col")
     
     # Prefix columns to denote query results
-    names(result)[25:32] <- paste0("result_",names(result)[25:32])
+    names(result)[24:32] <- paste0("result_",names(result)[24:32])
     
     return(result)
     
     }
 
 # Call the wrapper function to generate result dataset
-result <- wrapper_func(df)
+system.time(result <- wrapper_func(df))
 
 ## output results to csv file
 # write.csv(result, "2010_criminal_search(5).csv", row.names = FALSE)
