@@ -1,11 +1,4 @@
 get_dktrpt <- function(url) {
-
-    # url <- search_2010$docket_report_url[1]
-    # url <- search_2010$docket_report_url[563]
-    # url <- search_2010$docket_report_url[55]
-    # url <- search_2010$docket_report_url[3]
-    # url <- search_2010$docket_report_url[27]
-    # url <- search_2010$docket_report_url[35]
     
     library(rvest, quietly = TRUE)
     
@@ -134,12 +127,7 @@ wrapper_fun_2 <- function(search_results_file, nrows=nrow(read.csv(search_result
 
     ## Get docket report for each case
     search_results_df <- read.csv(search_results_file, stringsAsFactors = FALSE)
-    # search_results_df <- read.csv("2010_criminal_search(5).csv", stringsAsFactors = FALSE)
-    # nrows=10
-    
-    ## "https://caseinfo.aoc.arkansas.gov/cconnect/PROD/public/ck_public_qry_doct.cp_dktrpt_frames?backto=P&case_id=16JCR-10-1260"
-    ## "https://caseinfo.aoc.arkansas.gov/cconnect/PROD/public/ck_public_qry_doct.cp_dktrpt_docket_report?case_id=16JCR-10-1260"
-    
+
     l <- lapply(X=1:nrows, FUN=function(i){
         cat(paste0(i, "\n"))
         dktrpt <- search_results_df$result_docket_report_url[i]
@@ -149,17 +137,9 @@ wrapper_fun_2 <- function(search_results_file, nrows=nrow(read.csv(search_result
         
     })
     
-    # saveRDS(l, "dktrpt_2010.RDS")
-    
-    # l <- readRDS("dktrpt_2010.RDS")
-    
     numViolations <- unlist(lapply(1:length(l), function(i){
         dim(l[[i]])[2]/8
     }))
-    
-    # Look at the distribution of violations count
-    # hist(numViolations)
-    # range(numViolations)
     
     # Get the largest set of column names
     colNames <- c(paste0("AgeAtViolation_", 1:max(numViolations)), 
@@ -172,9 +152,6 @@ wrapper_fun_2 <- function(search_results_file, nrows=nrow(read.csv(search_result
                   paste0("ViolationTime_", 1:max(numViolations)))
     
     # Replace empty elements with empty dataframe
-    # table(unlist(lapply(l, is.character)))
-    # FALSE  TRUE 
-    # 1191   459 
     ind <- which(unlist(lapply(l, is.character)))
     # length(ind) # [1] 459
     
@@ -210,7 +187,6 @@ wrapper_fun_2 <- function(search_results_file, nrows=nrow(read.csv(search_result
     docket_reports <- df
     # dim(df) # [1] 1650  208
     
-<<<<<<< HEAD
     # Return search results and docket reports in seperate dataframes
     # return(list(search_results=search_results, docket_reports=docket_reports))
     
@@ -218,19 +194,10 @@ wrapper_fun_2 <- function(search_results_file, nrows=nrow(read.csv(search_result
     result <- cbind(search_results, docket_reports, stringsAsFactors=FALSE)
     
     return(result)
-=======
-    # result <- cbind(search_results, docket_reports, stringsAsFactors=FALSE)
-    
-    # return(result)
-    return(list(search_results=search_results, docket_reports=docket_reports))
->>>>>>> faf87d2542a25e394132001b7b044508df052dba
     
     }
 
-# Write results to a file
-test <- wrapper_fun_2("2010_criminal_search(5).csv")
 
-<<<<<<< HEAD
 # Scrape docket report from each search result
 result <- wrapper_fun_2("2010_criminal_search(5).csv")
 
@@ -239,12 +206,3 @@ result <- wrapper_fun_2("2010_criminal_search(5).csv")
 
 # Write results to a file
 # write.csv(result, "2010_criminal_search.csv", row.names = FALSE)
-=======
-# saveRDS(test, "search_results_docket_reports.RDS")
-
-# write.csv(result, "2010_criminal_search_with_dktrpt.csv", row.names = FALSE)
-
-# str(test$search_results)
-# str(test$docket_reports)
-
->>>>>>> faf87d2542a25e394132001b7b044508df052dba
