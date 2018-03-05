@@ -5,10 +5,10 @@
 
 source("helper_functions.R")
 
-# df1 <- append_parameters("2010 Asset Seizures.csv", start_date = "01/01/2010", end_date = "12/31/2011")
-# df2 <- wrapper_fun(df1)
-# df3 <- wrapper_fun_2(df2)
-# write.csv(df3, "run_job_out_2010.csv", row.names=FALSE)
+df1 <- append_parameters("2010 Asset Seizures.csv", start_date = "01/01/2010", end_date = "12/31/2011")
+df2 <- wrapper_fun(df1)
+df3 <- wrapper_fun_2(df2)
+write.csv(df3, "run_job_out_2010.csv", row.names=FALSE)
 
 # df1 <- append_parameters("2011 Asset Seizures.csv", start_date = "01/01/2011", end_date = "12/31/2012")
 # df2 <- wrapper_fun(df1)

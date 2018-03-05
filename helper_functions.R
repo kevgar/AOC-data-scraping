@@ -4,61 +4,172 @@
 ###################################
 
 append_parameters <- function(filename, start_date, end_date, person_type = "D%20-%20DEFENDANT"){
-    # browser()
+    # browser() # for debugging
     # Read in the CAF data file
+    # df <- read.csv("2010 Asset Seizures.csv", stringsAsFactors = FALSE)
     df <- read.csv(filename, stringsAsFactors = FALSE)
+    
+    # Only keep rows with a Tracking.Number
+    df <- df[df$Tracking.Number!="",]
     
     # Create a copy of Defendant.Name to modify
     df$Defendant.Name2 <- df$Defendant.Name
     
     # Remove suffixes and other junk from Defendant.Name
-    pat <- c(" Jr."," Jr"," Sr."," Sr"," IV"," III"," II"," 4th"," 3rd"," 2nd"," & No Name","\' ","\'")
-    for(i in pat) df$Defendant.Name2 <- gsub(i,"", df$Defendant.Name2, fixed = TRUE)
-    # Remove spanish stopwords
-    pat <- c(" De "," La ")
-    for(i in pat) df$Defendant.Name2 <- gsub(i," ", df$Defendant.Name2, fixed = TRUE)
+    df$Defendant.Name2 <- gsub(", Jr.","", df$Defendant.Name2, fixed = TRUE)
+    df$Defendant.Name2 <- gsub(", Sr.","", df$Defendant.Name2, fixed = TRUE)
+    df$Defendant.Name2 <- gsub(", Jr","", df$Defendant.Name2, fixed = TRUE)
+    df$Defendant.Name2 <- gsub(", Sr","", df$Defendant.Name2, fixed = TRUE)
+    df$Defendant.Name2 <- gsub(" Jr.","", df$Defendant.Name2, fixed = TRUE)
+    df$Defendant.Name2 <- gsub(" Sr.","", df$Defendant.Name2, fixed = TRUE)
+    df$Defendant.Name2 <- gsub(" & No Name","", df$Defendant.Name2, fixed = TRUE)
+    df$Defendant.Name2 <- gsub("\\bJr\\b","", df$Defendant.Name2, perl = TRUE)
+    df$Defendant.Name2 <- gsub("\\bSr\\b","", df$Defendant.Name2, perl = TRUE)
+    df$Defendant.Name2 <- gsub("\\bIV\\b","", df$Defendant.Name2, perl = TRUE)
+    df$Defendant.Name2 <- gsub("\\bIII\\b","", df$Defendant.Name2, perl = TRUE)
+    df$Defendant.Name2 <- gsub("\\bII\\b","", df$Defendant.Name2, perl = TRUE)
+    df$Defendant.Name2 <- gsub("\\b4th\\b","", df$Defendant.Name2, perl = TRUE)
+    df$Defendant.Name2 <- gsub("\\b3rd\\b","", df$Defendant.Name2, perl = TRUE)
+    df$Defendant.Name2 <- gsub("\\b2nd\\b","", df$Defendant.Name2, perl = TRUE)
     
-    # Count the number of words in Defendant.Name
+    # Remove spanish stopwords
+    df$Defendant.Name2 <- gsub("\\bDe\\b","", df$Defendant.Name2, perl = TRUE)
+    df$Defendant.Name2 <- gsub("\\bLa\\b","", df$Defendant.Name2, perl = TRUE)
+    
+    # replace "or" with "/" and "and" with "&"
+    df$Defendant.Name2 <- gsub("\\bor\\b","/", df$Defendant.Name2, perl = TRUE)
+    df$Defendant.Name2 <- gsub("\\band\\b","&", df$Defendant.Name2, perl = TRUE)
+    
+    # remove trailing spaces
+    df$Defendant.Name2 <- trimws(df$Defendant.Name2)
+    
+    ######################################################################
+    # For Defendant.name that have a comma, split Defendant.name
+    # on "," and use name that has the most words
+    # Note: in cases where Defendant.name has concatinated values
+    #   this procedure will only captures one of the names
+    ######################################################################
+    
+    # index of rows where Defendant.Name has a ","
+    ind <- which(grepl(",",df$Defendant.Name2,fixed = TRUE))
+    # list of vectors whose elements are parts of the name
+    l <- lapply(X=strsplit(df[ind,"Defendant.Name2"], ",", fixed=TRUE), trimws)
+    # assigning the part of the name that has the most words to "Defendant.Name2"
+    df[ind,"Defendant.Name2"] <- vapply(1:length(l), function(i){
+        # list of names for each row
+        ll <- strsplit(l[[i]], "\\s+", perl=TRUE)
+        # list of name lengths for each row
+        lll <- unlist(lapply(ll,length))
+        # vector of longest name indexes
+        ind.max <- which.max(lll)
+        # vector of longest names
+        paste(ll[[ind.max]], collapse = " ")
+    }, FUN.VALUE = character(1L))
+    
+    # # Count the total number of words in Defendant.Name
     df$numWords <- vapply(strsplit(df$Defendant.Name2, "\\W+"), length, integer(1))
+    
+    # Count the number of words before "&" or "/" in Defendant.Name
+    # list of names for each row
+    l <- lapply(X=strsplit(df$Defendant.Name2, "&|/", perl=TRUE), trimws)
+    # number of words person1's name has
+    df$p1NumWords <- vapply(1:length(l), function(i){
+        length(unlist(strsplit(l[[i]][1], "\\s+", perl=TRUE)))
+    }, FUN.VALUE = integer(1L))
+    
+    # create indicator for having two names
+    df$isTwoNames <- grepl("&", df$Defendant.Name2, fixed=TRUE) | 
+        grepl("/", df$Defendant.Name2, fixed=TRUE)
+    
+    # select the rows that have two names
+    person1 <- df[df$isTwoNames, ]
+    
+    # create a copy of each row that has two names
+    person2 <- df[df$isTwoNames, ]
+    
+    # select the rows that have only one name
+    df <- df[!df$isTwoNames,]
     
     # distribution of word count
     # table(df$numWords)
-    # 0    1    2    3    4    5 
-    # 22    1 1191  395   56    6
+    # 1    2    3    4 
+    # 2 1197  368    4
+        
+    ###################################
+    # Parse Defendant.name for the single-person records
+    ###################################
     
-    # If word count > 0, assume the last word is last_name
-    df$last_name <- vapply(X=1:nrow(df), FUN=function(i){
-        ifelse(df$numWords[i]>0,
-               unlist(strsplit(df$Defendant.Name2[i], "\\W+"))[df$numWords[i]],
-               NA_character_
-        )
-    }, FUN.VALUE=character(1))
-    
-    # Attempt to extract first name based how many words are in Defendant.Name
+    # Assume the first word is first_name
     df$first_name <- vapply(X=1:nrow(df), FUN=function(i){
-        # If defendent_name has 2 words, assume first word is first_name
-        ifelse(df$numWords[i]==2,unlist(strsplit(df$Defendant.Name2[i], "\\W+"))[1],
-               # If defendent_name has 3 words, assume first word is first_name
-               ifelse(df$numWords[i]==3, unlist(strsplit(df$Defendant.Name2[i], "\\W+"))[1],
-                      # If defendent_name has 3 words and "/" or "&", assume the first is first_name
-                      ifelse(df$numWords[i]==3 & any(unlist(strsplit(df$Defendant.Name2[i]," ")) %in% c("/","&")),unlist(strsplit(df$Defendant.Name2[i], "\\W+"))[1],
-                             # If defendent_name has 4 words, one of them "or", assume the third is first_name 
-                             ifelse(df$numWords[i]==4 & any(unlist(strsplit(df$Defendant.Name2[i]," ")) =="or"),unlist(strsplit(df$Defendant.Name2[i], "\\W+"))[1],
-                                    # If defendent_name has 4 words and "/" or "&", assume the third is first_name 
-                                    ifelse(df$numWords[i]==4 & any(unlist(strsplit(df$Defendant.Name2[i]," ")) %in% c("/","&")),unlist(strsplit(df$Defendant.Name2[i], "\\W+"))[3],
-                                           # If defendent_name has 5 words one of them "or", assume the fourth is first_name
-                                           ifelse(df$numWords[i]==5 & any(unlist(strsplit(df$Defendant.Name2[i]," ")) == "or"),unlist(strsplit(df$Defendant.Name2[i], "\\W+"))[4],
-                                                  # Otherwise leave first_name empty
-                                                  NA_character_)
-                                    )
-                             )
-                      )
-               )
-        )
+        unlist(strsplit(df$Defendant.Name2[i], "\\W+"))[1]
     }, FUN.VALUE=character(1))
     
-    # replace NAs with ""
-    df$first_name <- ifelse(is.na(df$first_name),"", df$first_name)
+    # Assume the last word is last_name
+    df$last_name <- vapply(X=1:nrow(df), FUN=function(i){
+        unlist(strsplit(df$Defendant.Name2[i], "\\W+"))[df$numWords[i]]
+    }, FUN.VALUE=character(1))
+    
+    ###################################
+    # Parse Defendant.name for the double-person records
+    ###################################
+    
+    # table(person1$numWords)
+    #  3  4  5 
+    # 26 49  3 
+    
+    # we have three scenarios..
+    # 
+    # scenario 1: name has 3 words
+    #   person1 first word is first name, last word is last name
+    #   person2 second word is first name, last word is last name
+    # 
+    # scenario2: name has 4 words
+    #   person1 first word is first name, second word is last name
+    #   person2 third word is first name, last word is last name
+    # 
+    # scenario3: name has 5 words
+    #   scenario 3A: "&" is preceeded by 2 words
+    #       person1 first word is first name, second word is last name
+    #       person2 third word is first name, last last word is last name
+    # 
+    #   scenario 3B: "&" is preceeded by 3 words
+    #       person1 first word is first name, third word is last name
+    #       person2 fourth word is first name, last word is last name
+    
+    # function to extract nth word
+    get_word <- function(vec, n) {vapply(X=1:length(vec), FUN=function(i){
+        trimws(strsplit(vec[i], "\\W+", perl=TRUE)[[1]][n])
+        }, FUN.VALUE = character(1L))}
+    
+    ## PERSON 1
+    
+    # first name is ALWAYS the first word
+    person1$first_name <- get_word(person1$Defendant.Name2,1)
+    
+    # last name
+    person1$last_name <- NA_character_
+    person1$last_name <- ifelse(person1$numWords==3, get_word(person1$Defendant.Name2,3),person1$last_name)
+    person1$last_name <- ifelse(person1$numWords==4, get_word(person1$Defendant.Name2,2),person1$last_name)
+    person1$last_name <- ifelse(person1$numWords==5 & person1$p1NumWords==2, get_word(person1$Defendant.Name2,2),person1$last_name)
+    person1$last_name <- ifelse(person1$numWords==5 & person1$p1NumWords==3, get_word(person1$Defendant.Name2,3),person1$last_name)
+   
+    ## PERSON 2
+    
+    # first name
+    person2$first_name <- NA_character_
+    person2$first_name <- ifelse(person2$numWords==3, get_word(person2$Defendant.Name2,2),person2$first_name)
+    person2$first_name <- ifelse(person2$numWords==4, get_word(person2$Defendant.Name2,3),person2$first_name)
+    person2$first_name <- ifelse(person2$numWords==5 & person2$p1NumWords==2, get_word(person2$Defendant.Name2,3),person2$first_name)
+    person2$first_name <- ifelse(person2$numWords==5 & person2$p1NumWords==3, get_word(person2$Defendant.Name2,4),person2$first_name)
+    
+    # last name
+    person2$last_name <- NA_character_
+    person2$last_name <- ifelse(person2$numWords==3, get_word(person2$Defendant.Name2,3),person2$last_name)
+    person2$last_name <- ifelse(person2$numWords==4, get_word(person2$Defendant.Name2,4),person2$last_name)
+    person2$last_name <- ifelse(person2$numWords==5, get_word(person2$Defendant.Name2,5),person2$last_name)
+    
+    # combine the rows back into single dataframe 
+    df <- do.call("rbind", list(df, person1, person2))
     
     # Get parameter value for county
     county_lookup <- read.csv("county_lookup.csv", stringsAsFactors = FALSE)
@@ -75,10 +186,10 @@ append_parameters <- function(filename, start_date, end_date, person_type = "D%2
     df$county_code <- ifelse(is.na(df$county_code), "", df$county_code)
     
     # Exclude cases where Defendant.Name is empty
-    # nrow(df) # [1] 1672
+    # nrow(df) # [1] 1728
     df <- df[df$Tracking.Number != "",]
     df <- df[df$last_name != "",]
-    # nrow(df) # [1] 1650
+    # nrow(df) # [1] 1728
     
     # Create column for start_date
     df$start_date <- start_date
@@ -132,12 +243,15 @@ append_parameters <- function(filename, start_date, end_date, person_type = "D%2
     names(df) <- gsub("\\.+","", names(df))
     
     # Prefix columns to denote query inputs and query results
-    names(df)[1:14] <- paste0("caf_",names(df)[1:15])
-    names(df)[16:21] <- paste0("query_",names(df)[16:22])
+    names(df)[1:14] <- paste0("caf_",names(df)[1:14])
+    names(df)[15:21] <- paste0("query_",names(df)[15:21])
+    
+    # Order by Tracking.Number
+    df <- df[order(df$caf_TrackingNumber),]
     
     return(df)
     
-}
+} # end append_parameters
 
 ## get search parameters from 2010 Asset Tracker file
 # df <- append_parameters("2010 Asset Seizures.csv", start_date = "01/01/2010", end_date = "12/31/2011")
