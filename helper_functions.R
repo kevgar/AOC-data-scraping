@@ -6,11 +6,15 @@
 append_parameters <- function(filename, start_date, end_date, person_type = "D%20-%20DEFENDANT"){
     # browser() # for debugging
     # Read in the CAF data file
-    # df <- read.csv("2010 Asset Seizures.csv", stringsAsFactors = FALSE)
     df <- read.csv(filename, stringsAsFactors = FALSE)
     
     # Only keep rows with a Tracking.Number
     df <- df[df$Tracking.Number!="",]
+    # Only keep rows with a Defendant.Name
+    df <- df[df$Defendant.Name!="N/A",]
+    # Remove rows for states besides AR
+    if(!is.null(df$State)) df <- df[df$State %in% c("","AR"),]
+    if(!is.null(df$STATE)) df <- df[df$STATE %in% c("","AR"),]
     
     # Create a copy of Defendant.Name to modify
     df$Defendant.Name2 <- df$Defendant.Name
@@ -43,16 +47,24 @@ append_parameters <- function(filename, start_date, end_date, person_type = "D%2
     # remove trailing spaces
     df$Defendant.Name2 <- trimws(df$Defendant.Name2)
     
+    # Remove filler values
+    df$Defendant.Name2 <- gsub("???","", df$Defendant.Name2, fixed = TRUE)
+    df$Defendant.Name2 <- gsub("Unknown","", df$Defendant.Name2, fixed = TRUE)
+    
+    # Only keep rows with a nonempty Defendant.Name2
+    df <- df[df$Defendant.Name2!="",]
+    
     ######################################################################
     # For Defendant.name that have a comma, split Defendant.name
     # on "," and use name that has the most words
     # Note: in cases where Defendant.name has concatinated values
-    #   this procedure will only captures one of the names
+    #   this procedure will only capture one of the names
     ######################################################################
     
     # index of rows where Defendant.Name has a ","
     ind <- which(grepl(",",df$Defendant.Name2,fixed = TRUE))
     # list of vectors whose elements are parts of the name
+    # browser()
     l <- lapply(X=strsplit(df[ind,"Defendant.Name2"], ",", fixed=TRUE), trimws)
     # assigning the part of the name that has the most words to "Defendant.Name2"
     df[ind,"Defendant.Name2"] <- vapply(1:length(l), function(i){
@@ -186,15 +198,14 @@ append_parameters <- function(filename, start_date, end_date, person_type = "D%2
     df$county_code <- ifelse(is.na(df$county_code), "", df$county_code)
     
     # Exclude cases where Defendant.Name is empty
-    # nrow(df) # [1] 1728
-    df <- df[df$Tracking.Number != "",]
     df <- df[df$last_name != "",]
-    # nrow(df) # [1] 1728
     
     # Create column for start_date
     df$start_date <- start_date
-    # Create column for start_date
+    
+    # Create column for end_date
     df$end_date <- end_date
+    
     # Create column for person_type
     df$person_type <- person_type
     
@@ -255,23 +266,11 @@ append_parameters <- function(filename, start_date, end_date, person_type = "D%2
 
 ## get search parameters from 2010 Asset Tracker file
 # df <- append_parameters("2010 Asset Seizures.csv", start_date = "01/01/2010", end_date = "12/31/2011")
-## get search parameters from 2011 Asset Tracker file
-# df <- get_parameters("2011 Asset Seizures.csv", start_date = "01/01/2011", end_date = "12/31/2012")
-## get search parameters from 2012 Asset Tracker file
-# df <- get_parameters("2012 Asset Seizures.csv", start_date = "01/01/2012", end_date = "12/31/2013")
-## get search parameters from 2013 Asset Tracker file
-# df <- get_parameters("2013 Asset Seizures.csv", start_date = "01/01/2013", end_date = "12/31/2014")
-## get search parameters from 2014 Asset Tracker file
-# df <- get_parameters("2014 Asset Seizures.csv", start_date = "01/01/2014", end_date = "12/31/2015")
-## get search parameters from 2015 Asset Tracker file
-# df <- get_parameters("2015 Asset Seizures.csv", start_date = "01/01/2015", end_date = "12/31/2016")
-## get search parameters from 2016 Asset Tracker file
-# df <- get_parameters("2016 Asset Seizures.csv", start_date = "01/01/2016", end_date = "12/31/2017")
 
 
 ###################################
 # function for scraping search results from a CourtConnect 
-# "Person Name Or Business Name Search" URL
+# "Person Name Or Business Name Search" query URL
 ###################################
 
 PersonNameOrBusinessNameSearch <- function(url){
@@ -412,7 +411,17 @@ wrapper_fun <- function(df){
 # Funtion for scraping docket report
 ###################################
 
-get_dktrpt <- function(url) {
+get_dktrpt <- function(url, f.name, l.name, caf.date) {
+    # browser()
+    
+    if(length(url)==0) stop("url cannot be empty")
+    if(length(f.name)==0) stop("first name cannot be empty")
+    if(length(f.name)==0) stop("last name cannot be empty")
+    if(length(caf.date)==0) stop("CAF Received Date cannot be empty")
+    
+    # browser()
+    
+    # url <- "https://caseinfo.aoc.arkansas.gov/cconnect/PROD/public/ck_public_qry_doct.cp_dktrpt_docket_report?case_id=60CR-10-3300"
     
     library(rvest, quietly = TRUE)
     
@@ -456,77 +465,134 @@ get_dktrpt <- function(url) {
     
     
     # Violations section
-    violations <- a_nodes[[ind]] %>% html_text() %>% strsplit("\n") %>% .[[1]] %>% gsub("&nbsp", " ", .) %>% gsub(" +", " ", .) %>% trimws()
-    AgeAtViolation <- violations[which(grepl("Age at Violation: ", violations))] %>% gsub("Age at Violation: ","",.,fixed=TRUE) %>% as.integer()
-    PleaDate <- violations[which(grepl("Plea: ", violations))] %>% gsub("Plea: ","",.,fixed=TRUE) %>% gsub("NOT GUILTY","NOT_GUILTY",.) %>% gsub("NEGOTIATED GUILTY","NEGOTIATED_GUILTY",.) %>% strsplit(split=" ", .) %>% unlist() %>% .[c(TRUE, FALSE)] %>% as.character() # %>% as.Date(., format="%d-%B-%y") %>% suppressMessages()
-    Plea <- violations[which(grepl("Plea: ", violations))] %>% gsub("Plea: ","",.,fixed=TRUE) %>% gsub("NOT GUILTY","NOT_GUILTY",.) %>% gsub("NEGOTIATED GUILTY","NEGOTIATED_GUILTY",.) %>% strsplit(split=" ", .) %>% unlist() %>% .[c(FALSE, TRUE)] %>% as.character()
-    ViolationNumber <- violations[which(grepl("Plea: ", violations)) + rep(1,length(Plea))] %>% as.character()
-    ViolationDescription <- violations[which(grepl("Plea: ", violations)) + rep(2,length(Plea))] %>% as.character()
-    Level <- violations[which(grepl("Level: ", violations))] %>% gsub("Level: ","",.,fixed=TRUE) %>% as.character()
-    ViolationDate <- violations[which(grepl("Violation Date: ", violations))] %>% gsub("Violation Date: ","",.,fixed=TRUE) %>% as.character() # %>% as.Date(., format="%d-%B-%y") %>% suppressMessages()
-    ViolationTime <- violations[which(grepl("Violation Time: ", violations))] %>% gsub("Violation Time: ","",.,fixed=TRUE) %>% as.character()
+    violations <- a_nodes[[ind]] %>% html_text() %>% strsplit("\n") %>% .[[1]] %>% 
+        gsub("&nbsp", " ", .) %>% gsub(" +", " ", .) %>% trimws()
+
+    # Indicies of person names
+    name.ind <- setdiff(
+        which(grepl("Violation:", violations, fixed = TRUE)),
+        which(grepl("Age at Violation:", violations, fixed = TRUE))
+        ) - 1
+
+    PersonName <- violations[name.ind]
+    AgeAtViolation <- violations[which(grepl("Age at Violation: ", violations))] %>% 
+        gsub("Age at Violation: ","",.,fixed=TRUE) %>% as.integer()
     
-    maxlen <- max(vapply(list(AgeAtViolation,PleaDate,Plea,ViolationNumber,ViolationDescription,Level,ViolationDate,ViolationTime), length, FUN.VALUE = integer(1)))
+    PleaDate <- violations[which(grepl("Plea: ", violations))] %>% 
+        gsub("Plea: ","",.,fixed=TRUE) %>% gsub("NOT GUILTY","NOT_GUILTY",.) %>% 
+        gsub("NEGOTIATED GUILTY","NEGOTIATED_GUILTY",.) %>% strsplit(split=" ", .) %>% 
+        unlist() %>% .[c(TRUE, FALSE)] %>% as.character()
     
-    violations <- data.frame(AgeAtViolation=NA_integer_,
-                             PleaDate=NA_character_,
-                             # PleaDate=as.Date(NA_character_),
-                             Plea=NA_character_,
-                             ViolationNumber=NA_character_,
-                             ViolationDescription=NA_character_, 
-                             Level=NA_character_,
-                             ViolationDate=NA_character_,
-                             # ViolationDate=as.Date(NA_character_),
-                             ViolationTime=NA_character_, 
-                             stringsAsFactors=FALSE)
+    Plea <- violations[which(grepl("Plea: ", violations))] %>% 
+        gsub("Plea: ","",.,fixed=TRUE) %>% gsub("NOT GUILTY","NOT_GUILTY",.) %>% 
+        gsub("NEGOTIATED GUILTY","NEGOTIATED_GUILTY",.) %>% strsplit(split=" ", .) %>% 
+        unlist() %>% .[c(FALSE, TRUE)] %>% as.character()
     
-    if(maxlen>0) violations <- data.frame(
-        AgeAtViolation=ifelse(rep(identical(AgeAtViolation, character(0)), maxlen), NA_integer_, AgeAtViolation),
-        PleaDate=ifelse(rep(identical(PleaDate,character(0)),maxlen), NA_character_, PleaDate),
-        Plea=ifelse(rep(identical(Plea, character(0)),maxlen), NA_character_, Plea),
-        ViolationNumber=ifelse(rep(identical(ViolationNumber, character(0)),maxlen), NA_character_, ViolationNumber),
-        ViolationDescription=ifelse(rep(identical(ViolationDescription, character(0)),maxlen), NA_character_, ViolationDescription),
-        Level=ifelse(rep(identical(Level, character(0)),maxlen), NA_character_, Level),
-        ViolationDate=ifelse(rep(identical(ViolationDate, character(0)),maxlen), NA_character_, ViolationDate),
-        ViolationTime=ifelse(rep(identical(ViolationTime,character(0)),maxlen), NA_character_, ViolationTime),
+    ViolationNumber <- violations[which(grepl("Plea: ", violations)) + 
+        rep(1,length(Plea))] %>% as.character()
+    
+    ViolationDescription <- violations[which(grepl("Plea: ", violations)) + 
+        rep(2,length(Plea))] %>% as.character()
+    
+    Level <- violations[which(grepl("Level: ", violations))] %>% 
+        gsub("Level: ","",.,fixed=TRUE) %>% as.character()
+    
+    ViolationDate <- violations[which(grepl("Violation Date: ", violations))] %>% 
+        gsub("Violation Date: ","",.,fixed=TRUE) %>% as.character()
+    
+    # Create empty dataframe
+    violations <- data.frame(
+        PersonName=NA_character_,
+        AgeAtViolation=NA_integer_,
+        PleaDate=NA_character_,
+        Plea=NA_character_,
+        ViolationNumber=NA_character_,
+        ViolationDescription=NA_character_,
+        Level=NA_character_,
+        ViolationDate=NA_character_,
+        stringsAsFactors=FALSE)
+    
+    len <- length(PersonName)
+    
+    # Create dataframe of violations
+    if(len>0) violations <- data.frame(
+        PersonName=ifelse(rep(identical(PersonName, character(0)),len), NA_character_, PersonName),
+        AgeAtViolation=ifelse(rep(identical(AgeAtViolation, character(0)), len), NA_integer_, AgeAtViolation),
+        PleaDate=ifelse(rep(identical(PleaDate,character(0)),len), NA_character_, PleaDate),
+        Plea=ifelse(rep(identical(Plea, character(0)),len), NA_character_, Plea),
+        ViolationNumber=ifelse(rep(identical(ViolationNumber, character(0)),len), NA_character_, ViolationNumber),
+        ViolationDescription=ifelse(rep(identical(ViolationDescription, character(0)),len), NA_character_, ViolationDescription),
+        Level=ifelse(rep(identical(Level, character(0)),len), NA_character_, Level),
+        ViolationDate=ifelse(rep(identical(ViolationDate, character(0)),len), NA_character_, ViolationDate),
+        stringsAsFactors=FALSE)
+    
+    # browser()
+    # convert ViolationDate to date format
+    violations$ViolationDate <- as.Date(violations$ViolationDate,format="%d-%b-%y")
+    
+    
+    # Select violations where PersonName matches Defendant.Name
+    # and ViolationDate == caf_ReceiveDate
+    violations <- violations[
+        is.na(violations$PersonName) |
+            (grepl(f.name, violations$PersonName, ignore.case = TRUE) &
+            grepl(l.name, violations$PersonName, ignore.case = TRUE) &
+                caf.date==violations$ViolationDate)
+            ,]
+    
+    if(nrow(violations)==0)
+        violations <- data.frame(
+        PersonName=NA_character_,
+        AgeAtViolation=NA_integer_,
+        PleaDate=NA_character_,
+        Plea=NA_character_,
+        ViolationNumber=NA_character_,
+        ViolationDescription=NA_character_,
+        Level=NA_character_,
+        ViolationDate=NA_character_,
         stringsAsFactors=FALSE)
     
     # dim(violations) # [1] 3 8
     
-    AgeAtViolation <- data.frame(t(as.matrix(violations[,1])), stringsAsFactors = FALSE)
-    names(AgeAtViolation) <- paste0("AgeAtViolation_",1:ncol(AgeAtViolation))
-    PleaDate <- data.frame(t(as.matrix(violations[,2])))
-    names(PleaDate) <- paste0("PleaDate_",1:ncol(PleaDate))
-    Plea <- data.frame(t(as.matrix(violations[,3])))
-    names(Plea) <- paste0("Plea_",1:ncol(Plea))
-    ViolationNumber <- data.frame(t(as.matrix(violations[,4])))
-    names(ViolationNumber) <- paste0("ViolationNumber_",1:ncol(ViolationNumber))
-    ViolationDescription <- data.frame(t(as.matrix(violations[,5])))
-    names(ViolationDescription) <- paste0("ViolationDescription_",1:ncol(ViolationDescription))
-    Level <- data.frame(t(as.matrix(violations[,6])))
-    names(Level) <- paste0("Level_",1:ncol(Level))
-    ViolationDate <- data.frame(t(as.matrix(violations[,7])))
-    names(ViolationDate) <- paste0("ViolationDate_",1:ncol(ViolationDate))
-    ViolationTime <- data.frame(t(as.matrix(violations[,8])))
-    names(ViolationTime) <- paste0("ViolationTime_",1:ncol(ViolationTime))
+    violations_w <- violations
+    names(violations_w) <- paste0(names(violations), "_1")
     
-    violations_w <- cbind(AgeAtViolation,
-                          PleaDate,
-                          Plea,
-                          ViolationNumber,
-                          ViolationDescription,
-                          Level,
-                          ViolationDate,
-                          ViolationTime,
-                          stringsAsFactors=FALSE)
+    # Function to generate colums for each docket report
+    vec2cols <- function(col.ind, df){
+        Row <- data.frame(t(as.matrix(df[,col.ind])), stringsAsFactors = FALSE)
+        names(Row) <- paste0(names(df)[col.ind],"_",1:nrow(df))
+        return(Row)
+    }
+    
+    if(grepl(f.name, violations$PersonName, ignore.case = TRUE) &
+       grepl(l.name, violations$PersonName, ignore.case = TRUE) &
+       caf.date==violations$ViolationDate){
+        violations_w <- cbind(
+            # Create columns for PersonName
+            vec2cols(1, violations),
+            # Create columns for AgeAtViolation
+            vec2cols(2, violations),
+            # Create columns for PleaDate
+            vec2cols(3, violations),
+            # Create columns for Plea
+            vec2cols(4, violations),
+            # Create columns for ViolationNumber
+            vec2cols(5, violations),
+            # Create columns for ViolationDescription
+            vec2cols(6, violations),
+            # Create columns for Level
+            vec2cols(7, violations),
+            # Create columns for ViolationDate
+            vec2cols(8, violations),
+            stringsAsFactors=FALSE)
+        }
     
     # dim(violations_w) # [1]  1 24
     
     return(violations_w)
     
     
-} # end of get_dktrpt function
-
+    } # end of get_dktrpt function
 
 ###################################
 # Wrapper function for docket report scraper
@@ -535,16 +601,37 @@ get_dktrpt <- function(url) {
 wrapper_fun_2 <- function(search_results_df, nrows=nrow(search_results_df)){
 # wrapper_fun_2 <- function(search_results_file, nrows=nrow(read.csv(search_results_file, stringsAsFactors = FALSE))){
     
+    ## read parameters from disk for testing
+    # search_results_df <- readRDS("search_results_df.RDS")
+    # nrows <- nrow(search_results_df)
+    # l <- readRDS("l.RDS")
+    #######################
+    
+    # Convert caf_ReceiveDate to date format
+    search_results_df$caf_ReceiveDate <- as.Date(search_results_df$caf_ReceiveDate, format="%m/%d/%y")
+    
     ## Get docket report for each case
     l <- lapply(X=1:nrows, FUN=function(i){
+        
         # print progress
-        id_txt <- ifelse(is.na(search_results_df$result_case_id[i]), "EMPTY RESULT",search_results_df$result_case_id[i])
-        cat(paste0(i,": ", 
-                   id_txt," ",search_results_df$query_first_name[i]," ",search_results_df$query_last_name[i], 
-                   "... "))
+        id_txt <- ifelse(
+            is.na(search_results_df$result_case_id[i]), 
+            "EMPTY RESULT",
+            search_results_df$result_case_id[i]
+            )
+        
+        cat(paste0(i,": ",id_txt," ",
+            search_results_df$query_first_name[i]," ",
+            search_results_df$query_last_name[i],"... "
+            ))
         
         dktrpt <- search_results_df$result_docket_report_url[i]
-        if(!is.na(dktrpt)) dktrpt <- get_dktrpt(dktrpt)
+        
+        if(!is.na(dktrpt)) 
+            dktrpt <- get_dktrpt(url = dktrpt,
+                f.name = search_results_df$query_first_name[i], 
+                l.name = search_results_df$query_last_name[i], 
+                caf.date = search_results_df$caf_ReceiveDate[i])
         
         # add violations count to progress
         nCols <- ifelse(all(is.na(dktrpt)), 0, ncol(dktrpt))
@@ -552,24 +639,29 @@ wrapper_fun_2 <- function(search_results_df, nrows=nrow(search_results_df)){
         
         return(dktrpt)
         
-    })
+    }) # end lapply
     
     numViolations <- unlist(lapply(1:length(l), function(i){
         dim(l[[i]])[2]/8
     }))
     
     # Get the largest set of column names
-    colNames <- c(paste0("AgeAtViolation_", 1:max(numViolations)), 
-                  paste0("Level_", 1:max(numViolations)),
-                  paste0("Plea_", 1:max(numViolations)), 
-                  paste0("PleaDate_", 1:max(numViolations)),
-                  paste0("ViolationDate_", 1:max(numViolations)), 
-                  paste0("ViolationDescription_", 1:max(numViolations)),
-                  paste0("ViolationNumber_", 1:max(numViolations)),
-                  paste0("ViolationTime_", 1:max(numViolations)))
+    colNames <- c(
+        paste0("PersonName_", 1:max(numViolations)),
+        paste0("AgeAtViolation_", 1:max(numViolations)),
+        paste0("Level_", 1:max(numViolations)),
+        paste0("Plea_", 1:max(numViolations)),
+        paste0("PleaDate_", 1:max(numViolations)),
+        paste0("ViolationDate_", 1:max(numViolations)),
+        paste0("ViolationDescription_", 1:max(numViolations)),
+        paste0("ViolationNumber_", 1:max(numViolations))
+        )
     
     # Replace empty elements with empty dataframe
-    ind <- which(unlist(lapply(l, is.character)))
+    ind <- which(unlist(lapply(1:length(l), function(i){
+        all(is.na(l[[i]]))
+        })))
+    
     # length(ind) # [1] 459
     
     l <- lapply(1:length(l), function(i){
@@ -582,35 +674,83 @@ wrapper_fun_2 <- function(search_results_df, nrows=nrow(search_results_df)){
         
         return(l[[i]])
         
-    })
+    }) # end lapply
     
     # Combine docket reports into single dataframe
     library(data.table, quietly = TRUE)
     df <- rbindlist(l, fill=TRUE)
-    
-    # Convert from data.table back to dataframe
-    df <- as.data.frame(df, stringsAsFactors=FALSE)
-    
-    # Put columns in order
-    df <- df[, colNames]
-    
-    # Convert factor columns to character
-    indFactors <- which(!grepl("AgeAtViolation_", names(df)))
-    df[,indFactors] <- lapply(df[,indFactors], as.character)
-    
+    # names(df)
+    ## Put columns in order
+    df <- df[, c(colNames), with=FALSE]
+    # names(df)
+
     # Join docket report data to the search results
     search_results <- search_results_df
-    # dim(search_results) # [1] 1650   32
+    
+    # dim(search_results) # [1] 3710   31
     docket_reports <- df
-    # dim(df) # [1] 1650  208
+    # dim(docket_reports) # [1] 3710  176
     
     # Return search results and docket reports in seperate dataframes
-    # return(list(search_results=search_results, docket_reports=docket_reports))
+    # and return error message if search_results and docket_reports
+    # have a different number of rows
+    if(nrow(search_results)!=nrow(docket_reports)) { 
+        saveRDS(list(search_results=search_results, docket_reports=docket_reports),
+            "result_list.RDS"); stop(paste("incorrect numer of rows there are", nrow(search_results), 
+            "search results and", nrow(docket_reports), "docket reports"))
+        }
     
     # Return search results and docket reports in a single dataframe
     result <- cbind(search_results, docket_reports, stringsAsFactors=FALSE)
+    # dim(result) # [1] 3710  207
+    
+    # Remove columns that are redundant
+    names(result)[which(names(result)=="PersonName_1")] <- "PersonName"
+    result <- result[,!grepl("PersonName_", colnames(result))]
+    names(result)[which(names(result)=="AgeAtViolation_1")] <- "AgeAtViolation"
+    result <- result[,!grepl("AgeAtViolation_", colnames(result))]
+    names(result)[which(names(result)=="PleaDate_1")] <- "PleaDate"
+    result <- result[,!grepl("PleaDate_", colnames(result))]
+    names(result)[which(names(result)=="ViolationDate_1")] <-  "ViolationDate" 
+    result <- result[,!grepl("ViolationDate_", colnames(result))]
+    
+    
+    # Convert ViolationDate to date format
+    result$ViolationDate <- as.Date(result$ViolationDate,origin="1970-01-01")
     
     return(result)
     
 } # end of wrapper_fun_2
 
+
+# # read in the results from scraping
+# df3 <- data.table(read.csv("run_job_out_2010.csv",stringsAsFactors = FALSE))
+# ncol(df3) # [1] 207
+# table(is.na(df3$id))
+# FALSE  TRUE 
+# 3214   496
+# df3 <- data.table(read.csv("run_job_out_2010(2).csv",stringsAsFactors = FALSE))
+# ncol(df3) # [1] 143
+# table(is.na(df3$id))
+# FALSE  TRUE 
+# 3214   496
+
+
+
+# df3_new <- df3[!is.na(df3$PersonName),
+# !names(df3) %in% c(paste0("PersonName_", 1:14),
+# paste0("AgeAtViolation_", 1:14),
+# paste0("PleaDate_", 1:14),
+# paste0("ViolationDate_", 1:14))]
+
+# # write the cleaned result to a file
+# write.csv(df3_new,"run_job_out_2010(2).csv", row.names = FALSE)
+
+# length(paste(df3_new$query_first_name, df3_new$query_last_name)) # [1] 835
+# length(unique(paste(df3_new$query_first_name, df3_new$query_last_name))) # [1] 765
+# 835-765 # [1] 70
+
+# df3_old <- df3_old[!is.na(df3_old$PersonName_1),]
+# length(paste(df3_old$query_first_name, df3_old$query_last_name)) # [1] 2266
+# length(unique(paste(df3_old$query_first_name, df3_old$query_last_name))) # [1] 1100
+# 2266-1100 # [1] 1166
